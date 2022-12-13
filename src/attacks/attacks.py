@@ -65,7 +65,8 @@ class FastGradientSign(nn.Module):
         
         return perturbed_images, original_prediction, new_preds
     
-    def single_attack(self, inputs, target):
+    def single_attack(self, inputs, target, setup = False):
+        #if setup:
         self.setup_attack(inputs, target)
         self.reset_grads(inputs)
         original_outputs = self.predict(inputs, only_output=True)
@@ -77,7 +78,7 @@ class FastGradientSign(nn.Module):
 
 class ProjectedGradientDescent(nn.Module):
 
-    def __init__(self, model, loss_fn, iterations = 100, device = None, epsilon = 0.25, return_logits = False, norm = 'inf'):
+    def __init__(self, model, loss_fn, iterations = 20, device = None, epsilon = 0.25, return_logits = False, norm = 'inf'):
         super().__init__()
         """
         args:
@@ -100,19 +101,13 @@ class ProjectedGradientDescent(nn.Module):
 
         self.fgsm = FastGradientSign(model, loss_fn, device, epsilon, return_logits)
 
-    def random_start(self, ball_center):
-        if self.norm == 'l2':
-            rand_init = torch.randn_like(ball_center)
-            unit_init = F.normalize(rand_init.view(rand_init.size(0), -1)).view(rand_init.size())
-            number_elements = torch.numel(ball_center)
-            r = (torch.rand(rand_init.size(0)) ** (1.0 / number_elements)) * self.epsilon
-            r = r[(...,) + (None,) * (r.dim() - 1)]
-            move_away = r * unit_init
-            return ball_center + move_away
-        elif self.norm == 'inf':
-            move_away = torch.rand_like(ball_center) * self.epsilon * 2 - self.epsilon
-            return ball_center + move_away
-
+    def clip(self, original_images, perturbed_images):
+        diff = perturbed_images - original_images
+        if self.norm == 'inf':
+            return original_images + torch.clamp(diff, -self.epsilon, self.epsilon)
+        elif self.norm == 'l2':
+            return original_images + torch.renorm(diff, 2,0, self.epsilon)
+        
     def forward(self, inputs, target, iterations = None):
 
         self.model.train(False)
@@ -120,55 +115,40 @@ class ProjectedGradientDescent(nn.Module):
         inputs, target = inputs.to(self.device), target.to(self.device)
 
         self.model.zero_grad()
-        if inputs.grad:
+        if inputs.grad is not None:
             inputs.grad.zero_()
 
-        perturbed_images = inputs.copy()
-
-        outputs = self.model(perturbed_images)
+        perturbed_images = inputs.clone().detach()
 
         # Original prediction
         with torch.no_grad():
+            outputs = self.model(perturbed_images)
             original_preds = outputs.argmax(1)
 
         if iterations:
             num_iterations = iterations
         else:
-            num_iterations = self.iterations
-
+            num_iterations = self.iterations        
+    
+        # perturbed_images = self.random_start(perturbed_images)
+        
+        # iterate
         for it in range(num_iterations):
-            perturbed_image = self.fgsm.single_attack(perturbed_image, target)
-            """
-            loss = self.loss_fn(outputs, target)
-            loss.backward()
-            
-            input_grad = inputs.grad
+            # Fast gradient sign attack
+            perturbed_images = self.fgsm.single_attack(perturbed_images, target)
+            # Clip to keep sample inside the ball
+            perturbed_images = self.clip(inputs, perturbed_images)
+            # Remove computational graph to allow for gradients
+            perturbed_images = perturbed_images.detach()
 
-            update_grad = input_grad.sign()
-            
-            perturbed_images = perturbed_images + self.epsilon * update_grad
-
-            perturbed_images
-
-            self.model.zero_grad()
-            inputs.grad.zero_()
-
-            outputs = self.model(perturbed_images)
-            """
-
-
-        # outputs = self.model(perturbed_images)
-        # New prediction
         with torch.no_grad():
-            new_preds = outputs.argmax(1)
+            new_outputs = self.model(perturbed_images)
+            new_preds = new_outputs.argmax(1)
         
         if self.return_logits:
             return perturbed_images, original_preds, new_preds, outputs, new_outputs
         
         return perturbed_images, original_preds, new_preds
-        
-
-
 
 
 
