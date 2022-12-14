@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 class ImageDisplayerGradCam():
 
-    def __init__(self, model, grad_cam, classes, reshape = transforms.Resize((256,256)), multi_label = True, image_dir = '', pdf = False):
+    def __init__(self, model, grad_cam, classes, reshape = transforms.Resize((256,256)), multi_label = True, image_dir = '', pdf = False, save_figs = False):
 
 
         self.model = model
@@ -29,7 +29,8 @@ class ImageDisplayerGradCam():
         
         # True = Display labels, False = Display Predictions
         self.display_labels_or_predictions = True
-
+    
+        self.save_figs = save_figs
 
 
         # Reshape image, as 
@@ -178,8 +179,10 @@ class ImageDisplayerGradCam():
 
         if self.pdf:
             print(f'{self.image_dir}/pdf/{file_name}_heatmap_{target_class}.pdf')
-            plt.savefig(f'{self.image_dir}/{file_name}_heatmap_{target_class}.pdf')
+            if self.save_figs:
+                plt.savefig(f'{self.image_dir}/{file_name}_heatmap_{target_class}.pdf')
         else:
             print(f'{self.image_dir}/{file_name}_heatmap_{target_class}.png')
-            plt.savefig(f'{self.image_dir}/{file_name}_heatmap_{target_class}.png')
+            if self.save_figs:
+                plt.savefig(f'{self.image_dir}/{file_name}_heatmap_{target_class}.png')
         plt.show()
