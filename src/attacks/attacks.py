@@ -107,8 +107,23 @@ class ProjectedGradientDescent(nn.Module):
             return original_images + torch.clamp(diff, -self.epsilon, self.epsilon)
         elif self.norm == 'l2':
             return original_images + torch.renorm(diff, 2,0, self.epsilon)
-        
-    def forward(self, inputs, target, iterations = None):
+
+    def random_start(self, ball_center):
+        if self.norm == 'l2':
+            rand_init = torch.randn_like(ball_center)
+            unit_init = F.normalize(rand_init.view(rand_init.size(0), -1)).view(rand_init.size())
+            number_elements = torch.numel(ball_center)
+            r = (torch.rand(rand_init.size(0)) ** (1.0 / number_elements)) * self.epsilon
+            r = r[(...,) + (None,) * (r.dim() - 1)]
+            move_away = r * unit_init
+            return ret
+        elif self.norm == 'inf':
+            move_away = torch.rand_like(ball_center) * self.epsilon * 2 - self.epsilon
+            ret = ball_center + move_away
+            ret.requires_grad = True
+            return ret
+
+    def forward(self, inputs, target, iterations = None, compute_original_prediction = True, compute_new_preds = True, random_start = False):
 
         self.model.train(False)
         inputs.requires_grad = True
@@ -120,17 +135,19 @@ class ProjectedGradientDescent(nn.Module):
 
         perturbed_images = inputs.clone().detach()
 
-        # Original prediction
-        with torch.no_grad():
-            outputs = self.model(perturbed_images)
-            original_preds = outputs.argmax(1)
+        if compute_original_prediction:
+            # Original prediction
+            with torch.no_grad():
+                outputs = self.model(perturbed_images)
+                original_preds = outputs.argmax(1)
 
         if iterations:
             num_iterations = iterations
         else:
             num_iterations = self.iterations        
-    
-        # perturbed_images = self.random_start(perturbed_images)
+        
+        if random_start:
+            perturbed_images = self.random_start(perturbed_images)
         
         # iterate
         for it in range(num_iterations):
@@ -141,14 +158,29 @@ class ProjectedGradientDescent(nn.Module):
             # Remove computational graph to allow for gradients
             perturbed_images = perturbed_images.detach()
 
-        with torch.no_grad():
-            new_outputs = self.model(perturbed_images)
-            new_preds = new_outputs.argmax(1)
+        if compute_new_preds:
+            with torch.no_grad():
+                new_outputs = self.model(perturbed_images)
+                new_preds = new_outputs.argmax(1)
         
         if self.return_logits:
-            return perturbed_images, original_preds, new_preds, outputs, new_outputs
-        
-        return perturbed_images, original_preds, new_preds
+            if compute_original_prediction and compute_new_preds:
+                return perturbed_images, original_preds, new_preds, outputs, new_outputs
+            elif compute_original_prediction:
+                return perturbed_images, original_preds, outputs
+            elif compute_new_preds:
+                return perturbed_images, new_preds, new_outputs
+            else:
+                return perturbed_images
+
+        if compute_original_prediction and compute_new_preds:
+            return perturbed_images, original_preds, new_preds
+        elif compute_original_prediction:
+            return perturbed_images, original_preds
+        elif compute_new_preds:
+            return perturbed_images, new_preds
+        else:
+            return perturbed_images
 
 
 

@@ -8,7 +8,7 @@ import time
 
 class Trainer():
 
-    def __init__(self, model, loss_fn, classes, training_params, device = 'cuda', num_epochs = 5, model_name=None, save_model = True, model_dir = 'models', multi_label = False, print_frequency = 100):
+    def __init__(self, model, loss_fn, classes, training_params, device = 'cuda', num_epochs = 5, model_name=None, save_model = True, model_dir = 'models', multi_label = False, print_frequency = 100, adversarial_training = False, adversarial_attack = None):
         
         self.model = model
         self.device = device
@@ -51,6 +51,9 @@ class Trainer():
         self.print_frequency = print_frequency
         
         self.longest_class_name = max([len(i) for i in self.class_names])
+        
+        self.adversarial_training = adversarial_training
+        self.adversarial_attack = adversarial_attack
 
 
     def train(self):
@@ -182,7 +185,7 @@ class Trainer():
                 acc = self.confusion_matrix['val'][ii, ii, current_epoch] / np.sum(
                     self.confusion_matrix['val'][ii, :, current_epoch], )
                 print(
-                    f'AP of {str(self.class_names[ii]).ljust(self.longest_class_name+2)}: {acc}'
+                    f'Acc of {str(self.class_names[ii]).ljust(self.longest_class_name+2)}: {acc}'
                     f'{acc*100:.01f}%'
                 )
 
@@ -215,6 +218,9 @@ class Trainer():
             if is_training:
                 inputs = data.get('image').to(self.data_device)
                 labels = data.get('label').to(self.data_device)
+                
+                if self.adversarial_training:
+                    inputs = self.adversarial_attack(inputs, labels, random_start = True, compute_original_prediction = False, compute_new_preds = False)
 
                 self.optimizer.zero_grad()
                 outputs = self.model(inputs)
@@ -224,6 +230,8 @@ class Trainer():
                 with torch.no_grad():
                     inputs = data['image'].to(self.data_device)       
                     labels = data['label'].to(self.data_device)
+                    if self.adversarial_training:
+                        inputs = self.adversarial_attack(inputs, labels, random_start = True, compute_original_prediction = False, compute_new_preds = False)
 
                     outputs = self.model(inputs)
                     loss = self.loss_fn(outputs, labels) 
@@ -236,7 +244,7 @@ class Trainer():
             losses.append(loss.item())
             # Multiple Labels per image
             if self.multi_label:
-                cpuout= outputs.detach().to('cpu')
+                cpuout = outputs.detach().to('cpu')
                 pred_scores = cpuout.numpy() 
                 concat_pred = np.append(concat_pred, pred_scores, axis = 0)
                 concat_labels = np.append(concat_labels, labels.cpu().numpy(), axis = 0)
