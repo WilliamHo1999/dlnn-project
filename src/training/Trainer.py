@@ -227,12 +227,11 @@ class Trainer():
                 loss = self.loss_fn(outputs, labels)
 
             else:
+                inputs = data['image'].to(self.data_device)       
+                labels = data['label'].to(self.data_device)
+                if self.adversarial_training:
+                    inputs = self.adversarial_attack(inputs, labels, random_start = True, compute_original_prediction = False, compute_new_preds = False)
                 with torch.no_grad():
-                    inputs = data['image'].to(self.data_device)       
-                    labels = data['label'].to(self.data_device)
-                    if self.adversarial_training:
-                        inputs = self.adversarial_attack(inputs, labels, random_start = True, compute_original_prediction = False, compute_new_preds = False)
-
                     outputs = self.model(inputs)
                     loss = self.loss_fn(outputs, labels) 
 
