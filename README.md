@@ -1,7 +1,24 @@
 # dlnn-project
 
+## 1. APPROACH
 
-## STRUCTURE
+Attacks:
+- PGD: Projected Gradient Descent PGD
+- FGSM: Fast gradient sign method
+
+Interpretation methods
+- GradCam
+
+Datasets
+- MNIST (bw digit image classification, 10 classes)
+- ImageNet, and subsets (3-channel general inage classification, 20k classes, 14m samples)
+
+Models 
+- GoogleNet (for MNIST)
+- ResNet (for ImageNet)
+
+
+## 2. STRUCTURE
 0. /utils/ :
 This folder contains anything useful that makes our lives easier, and is not directly related related to the other folders.
 
