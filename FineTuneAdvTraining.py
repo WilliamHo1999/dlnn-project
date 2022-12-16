@@ -100,7 +100,7 @@ if __name__ == "__main__":
     """
 
     # Fine-tune all layers
-    resnet, loaded_state_dict = load_model(model_path = 'models/resnet_100_imagenet_adv_training.pt')
+    resnet, loaded_state_dict = load_model(model_path = 'models/resnet_100_imagenet_fine_tuned.pt')
 
     for name, param in resnet.named_parameters():
         param.requires_grad = True
@@ -115,8 +115,8 @@ if __name__ == "__main__":
 
     train_params = [p for p in resnet.parameters() if p.requires_grad]
 
-    optimizer = torch.optim.Adam(train_params, lr = 0.0001, weight_decay = config['weight_decay'])
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[1,3,5], gamma=0.1)
+    optimizer = torch.optim.Adam(train_params, lr = 0.00001, weight_decay = config['weight_decay'])
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[3,5], gamma=0.1)
 
     training_params = {
         'dataloaders': dataloaders,
@@ -125,9 +125,9 @@ if __name__ == "__main__":
     }
 
     classes = list(train_loader.dataset.class_name_dict.values())
-    pgd = ProjectedGradientDescent(resnet, loss_fn, iterations = 20, epsilon = 0.25, return_logits=False)
+    pgd = ProjectedGradientDescent(resnet, loss_fn, iterations = 5, alpha = 0.02, epsilon = 0.01, return_logits=False)
 
-    trainer_fine_tune = Trainer(resnet, loss_fn, classes, training_params, DEVICE, num_epochs = 6, model_name = 'resnet_100_imagenet_adv_training_fine_tuned', save_model = True, model_dir = 'models', adversarial_training = True, adversarial_attack = pgd)
+    trainer_fine_tune = Trainer(resnet, loss_fn, classes, training_params, DEVICE, num_epochs = 6, model_name = 'resnet_100_imagenet_adv_training_from_scratch', save_model = True, model_dir = 'models', adversarial_training = True, adversarial_attack = pgd)
 
     trainer_fine_tune.train()
     

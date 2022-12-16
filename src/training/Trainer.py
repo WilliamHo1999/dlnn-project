@@ -8,7 +8,7 @@ import time
 
 class Trainer():
 
-    def __init__(self, model, loss_fn, classes, training_params, device = 'cuda', num_epochs = 5, model_name=None, save_model = True, model_dir = 'models', multi_label = False, print_frequency = 100, adversarial_training = False, adversarial_attack = None):
+    def __init__(self, model, loss_fn, classes, training_params, device = 'cuda', num_epochs = 5, model_name=None, save_model = True, model_dir = 'models', multi_label = False, print_frequency = 100, adversarial_training = False, adversarial_attack = None, custom_scheduler = False, continue_dict = None):
         
         self.model = model
         self.device = device
@@ -33,13 +33,26 @@ class Trainer():
             "val": np.zeros(shape=(self.num_classes , self.num_classes , self.num_epochs)),
         }
         
-        self.best_model = None
-        self.best_measure = 0
-        self.train_measure_at_best = 0
-        self.train_loss_at_best = 0
-        self.best_eval_loss = 0
-        self.best_epoch = 0
-        self.latest_epoch = 0
+        if continue_dict:
+            self.best_model = model
+            self.best_measure = continue_dict["best_measure"]
+            self.train_measure_at_best = continue_dict["train_measure_at_best"]
+            self.train_loss_at_best = continue_dict["train_loss_at_best"]
+            self.best_eval_loss = continue_dict[ "best_eval_loss"]
+            self.best_loss = continue_dict[ "best_eval_loss"]
+            self.best_epoch = continue_dict["best_epoch"]
+            self.latest_epoch = continue_dict["latest_epoch"]
+            self.start_epoch = continue_dict["latest_epoch"] + 1
+        else:
+            self.best_model = None
+            self.best_measure = 0
+            self.train_measure_at_best = 0
+            self.train_loss_at_best = 0
+            self.best_eval_loss = 0
+            self.best_epoch = 0
+            self.latest_epoch = 0
+            self.start_epoch = 0
+            self.best_loss = 0
         
         self.optimizer = training_params['optimizer']
         self.scheduler = training_params['scheduler']
@@ -54,11 +67,12 @@ class Trainer():
         
         self.adversarial_training = adversarial_training
         self.adversarial_attack = adversarial_attack
+        self.custom_scheduler = custom_scheduler
 
 
     def train(self):
 
-        for current_epoch in range(self.num_epochs):
+        for current_epoch in range(self.start_epoch, self.num_epochs):
             self.latest_epoch = current_epoch
             
             print("Current Epoch:", current_epoch)
@@ -98,7 +112,7 @@ class Trainer():
                 self.train_loss_at_best = train_dict['loss']
                 self.train_measure_at_best = train_dict['measure']
                 self.best_model = self.model
-                self.best_loss = self.epoch_loss['val'][-1]
+                self.best_eval_loss = self.epoch_loss['val'][-1]
                 self.best_epoch = current_epoch
 
                 if self.save_model:
@@ -109,12 +123,19 @@ class Trainer():
                     model_name_pt = self.model_name+'.pt'
                     PATH = os.path.join(self.model_dir, model_name_pt)
                     self.best_model.to('cpu')
-                    torch.save({
-                        'epoch': current_epoch+1,
-                        'model_state_dict': self.best_model.state_dict(),
-                        'optimizer_state_dict': self.optimizer.state_dict(),
-                        'scheduler_state_dict': self.scheduler.state_dict(),
-                    }, PATH)
+                    if self.custom_scheduler:
+                        torch.save({
+                            'epoch': current_epoch+1,
+                            'model_state_dict': self.best_model.state_dict(),
+                            'optimizer_state_dict': self.optimizer.state_dict(),
+                        }, PATH)
+                    else:
+                        torch.save({
+                            'epoch': current_epoch+1,
+                            'model_state_dict': self.best_model.state_dict(),
+                            'optimizer_state_dict': self.optimizer.state_dict(),
+                            'scheduler_state_dict': self.scheduler.state_dict(),
+                        }, PATH)
                     self.best_model.to(self.device)
                     self.model_path = PATH
                     
@@ -130,7 +151,7 @@ class Trainer():
                 print("Current Epoch:",current_epoch)
                 print("Eval  Model: ", self.model_name, ". MAPE: ", eval_measure, ". Avg loss:",  self.epoch_loss['val'][-1])
                 print("Train Model: ", self.model_name, ". MAPE", self.epoch_mape['train'][-1], "Avg loss:",  self.epoch_loss['train'][-1])
-                print("Current MAPE: ",self.best_measure, self.best_loss, "at epoch",self.best_epoch)
+                print("Current MAPE: ",self.best_measure, self.best_eval_loss, "at epoch",self.best_epoch)
                 for ii in range(len(self.classes)):
                     ap = self.epoch_ap['val'][-1, ii]
                     print(
@@ -141,7 +162,7 @@ class Trainer():
                 print("Current Epoch:",current_epoch)
                 print("Eval  Model: ", self.model_name, ". Acc: ", eval_measure, ". Avg loss:",  self.epoch_loss['val'][-1])
                 print("Train Model: ", self.model_name, ". Acc", self.epoch_acc['train'][-1], "Avg loss:",  self.epoch_loss['train'][-1])
-                print("Current acc: ",self.best_measure, self.best_loss, "at epoch",self.best_epoch)
+                print("Current acc: ",self.best_measure, self.best_eval_loss, "at epoch",self.best_epoch)
                 for ii in range(len(self.classes)):
                     acc = self.confusion_matrix['val'][ii, ii, current_epoch] / np.sum(
                         self.confusion_matrix['val'][ii, :, current_epoch], )
@@ -171,7 +192,7 @@ class Trainer():
 # print progress
         if self.multi_label:
             print("Current Epoch:",0)
-            print("Eval  Model: ", self.model_name, ". MAPE: ", eval_measure, ". Avg loss:",  self.epoch_loss['val'][-1])
+            print("Eval Model: ", self.model_name, ". MAPE: ", eval_measure, ". Avg loss:",  self.epoch_loss['val'][-1])
             for ii in range(len(self.classes)):
                 ap = self.epoch_ap['val'][-1, ii]
                 print(
@@ -180,13 +201,12 @@ class Trainer():
                 )
         else:
             print("Current Epoch:",0)
-            print("Eval  Model: ", self.model_name, ". Acc: ", eval_measure, ". Avg loss:",  self.epoch_loss['val'][-1])
+            print("Eval Model: ", self.model_name, ". Acc: ", eval_measure, ". Avg loss:",  self.epoch_loss['val'][-1])
             for ii in range(len(self.classes)):
                 acc = self.confusion_matrix['val'][ii, ii, current_epoch] / np.sum(
                     self.confusion_matrix['val'][ii, :, current_epoch], )
                 print(
-                    f'Acc of {str(self.class_names[ii]).ljust(self.longest_class_name+2)}: {acc}'
-                    f'{acc*100:.01f}%'
+                        f'Accuracy of {str(self.class_names[ii]).ljust(70)}:  {acc}'
                 )
 
     def run_epoch(self, model, current_epoch, is_training, mode):
@@ -250,6 +270,8 @@ class Trainer():
             # Single label per image
             else:
                 preds = torch.argmax(outputs, dim = 1)
+                #print("Unique preds:",torch.unique(preds).shape)
+                #print("Unique Labels:",torch.unique(labels).shape)
                 total_correct += preds.eq(labels).cpu().sum().numpy()
                 confusion_matrix += metrics.confusion_matrix(
                     labels.cpu().numpy(), preds.cpu().numpy(), labels=self.classes,

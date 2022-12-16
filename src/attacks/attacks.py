@@ -78,7 +78,7 @@ class FastGradientSign(nn.Module):
 
 class ProjectedGradientDescent(nn.Module):
 
-    def __init__(self, model, loss_fn, iterations = 20, device = None, epsilon = 0.25, return_logits = False, norm = 'inf'):
+    def __init__(self, model, loss_fn, iterations = 20, device = None, alpha = 0.20, epsilon = 0.25, return_logits = False, norm = 'inf'):
         super().__init__()
         """
         args:
@@ -92,6 +92,7 @@ class ProjectedGradientDescent(nn.Module):
         
         self.model = model
         self.loss_fn = loss_fn
+        self.alpha = alpha
         self.epsilon = epsilon
         self.return_logits = return_logits
 
@@ -104,21 +105,21 @@ class ProjectedGradientDescent(nn.Module):
     def clip(self, original_images, perturbed_images):
         diff = perturbed_images - original_images
         if self.norm == 'inf':
-            return original_images + torch.clamp(diff, -self.epsilon, self.epsilon)
+            return original_images + torch.clamp(diff, -self.alpha , self.alpha )
         elif self.norm == 'l2':
-            return original_images + torch.renorm(diff, 2,0, self.epsilon)
+            return original_images + torch.renorm(diff, 2,0, self.alpha )
 
     def random_start(self, ball_center):
         if self.norm == 'l2':
             rand_init = torch.randn_like(ball_center)
             unit_init = F.normalize(rand_init.view(rand_init.size(0), -1)).view(rand_init.size())
             number_elements = torch.numel(ball_center)
-            r = (torch.rand(rand_init.size(0)) ** (1.0 / number_elements)) * self.epsilon
+            r = (torch.rand(rand_init.size(0)) ** (1.0 / number_elements)) * self.alpha 
             r = r[(...,) + (None,) * (r.dim() - 1)]
             move_away = r * unit_init
             return ret
         elif self.norm == 'inf':
-            move_away = torch.rand_like(ball_center) * self.epsilon * 2 - self.epsilon
+            move_away = torch.rand_like(ball_center) * self.alpha  * 2 - self.alpha 
             ret = ball_center + move_away
             ret.requires_grad = True
             return ret
