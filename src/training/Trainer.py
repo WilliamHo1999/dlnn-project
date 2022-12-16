@@ -27,6 +27,8 @@ class Trainer():
 
         self.epoch_loss = {'train': [], 'val': []}
         self.epoch_acc = {'train': [], 'val': []}
+        self.epoch_mape = {'train': [], 'val': []}
+        self.epoch_ap = {'train': np.zeros((1,self.num_classes)), 'val': np.zeros((1,self.num_classes))}
         
         self.confusion_matrix = {
             "train": np.zeros(shape=(self.num_classes , self.num_classes , self.num_epochs)),
@@ -143,7 +145,7 @@ class Trainer():
                 self.stop_iteration += 1
                 
                 # No improvement in 5 epochs
-                if self.stop_iteration == 6:
+                if self.stop_iteration == 11:
                     return
 
             # print progress
