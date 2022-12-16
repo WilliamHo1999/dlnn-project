@@ -28,15 +28,19 @@ This folder contains datasets, and the neccesary classes to load data to a PyTor
 
 The actual data should be in the root folder under another folder ```Data/```
 
-2. /training/ :
-This folder contains the training script in the form of a class. The trainer takes a model, optimizer, scheduler etc., and trains the network for a given amount of epochs.
+2. training :
+-- /training/ This folder contains the training script in the form of a class. The trainer takes a model, optimizer, scheduler etc., and trains the network for a given amount of epochs.
+-- /fine_tune_resnet_100_class_images.ipynb fine-tunes the original ResNet work in which the last layer has been replaced to correspond to a 100-class classification
 
-3. attacks
+3. adversarial attacks
 -- /attacks/: python files with classes for different attacks
 -- /notebook_attacks.ipynb: proof of concept of FGS attack
 
 4. explainability
 -- /explainability/ : This folder contains classes for producing explanations of neural networks, mostly in the form of saliency maps.:
+
+5. adversarial training
+-- /FineTuneAdvTraining.py is the script to be run on a VM to run the adversarial training (PGD-AT) on the network
 
 
 

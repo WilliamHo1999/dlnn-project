@@ -37,12 +37,12 @@ class ImageDisplayerGradCam():
         self.reshape = reshape
 
 
-    def display_images(self, data, target_class = None, display_labels_or_predictions = True):
+    def display_images(self, data, target_class = None, display_labels_or_predictions = True, return_heatmap = False):
 
-        self._display_images(data, target_class, display_labels_or_predictions)
+        return self._display_images(data, target_class, display_labels_or_predictions, return_heatmap)
 
 
-    def _display_images(self, data, target_class , display_labels_or_predictions):
+    def _display_images(self, data, target_class , display_labels_or_predictions, return_heatmap):
         
         self.display_labels_or_predictions = display_labels_or_predictions
 
@@ -64,13 +64,13 @@ class ImageDisplayerGradCam():
 
         # Retreive predictions, to know what the model predicted
         if target_class is not None:
-            self._display_target_class(image, output, labels, target_class, image_file_name)
+            return self._display_target_class(image, output, labels, target_class, image_file_name, return_heatmap)
         elif self.multi_label:
-            self._display_multi_label(image, output, labels, image_file_name)
+            return self._display_multi_label(image, output, labels, image_file_name, return_heatmap)
         else:
-            self._display_single_label(image, output, labels, image_file_name)
+            return self._display_single_label(image, output, labels, image_file_name, return_heatmap)
 
-    def _display_multi_label(self, image, prediction, labels, image_file_name):
+    def _display_multi_label(self, image, prediction, labels, image_file_name, return_heatmap):
         """
         Generate sailency maps for each of the 
         """
@@ -100,10 +100,10 @@ class ImageDisplayerGradCam():
 
             target_class_str = target_classes_str_list[target_nr]
 
-            self._show_image_with_heapmap(heatmap, target, true_classes_str_list, target_class_str, image_file_name)
+            return self._show_image_with_heapmap(heatmap, target, true_classes_str_list, target_class_str, image_file_name, return_heatmap=return_heatmap)
 
 
-    def _display_single_label(self, image, prediction, label, image_file_name):
+    def _display_single_label(self, image, prediction, label, image_file_name, return_heatmap):
 
         prediction = prediction.item()
         try:
@@ -123,13 +123,19 @@ class ImageDisplayerGradCam():
 
         heatmap, _ = self.grad_cam(image, target_class)
 
+        print("_display_target_class", image.size())
+
         true_class_str = [f"{self.classes[label]} ({label})"]
         target_class_str = f"{self.classes[target_class]} ({target_class})"
 
-        self._show_image_with_heapmap(heatmap, target_class, true_class_str, target_class_str, image_file_name)
+         ### edits 2022-12-15
+        if image_file_name is not None:
+            return self._show_image_with_heapmap(heatmap, target_class, true_class_str, target_class_str, image_file_name, return_heatmap=return_heatmap)
+        else:
+            return self._show_image_with_heapmap(heatmap, target_class, true_class_str, target_class_str, image_file_name, image=image, return_heatmap=return_heatmap)
 
 
-    def _display_target_class(self, image, prediction, labels, target_class, image_file_name):
+    def _display_target_class(self, image, prediction, labels, target_class, image_file_name, return_heatmap):
         
         if self.multi_label:
             true_classes_str_list = [f"{self.classes[ind]} ({ind})" for ind, lab in enumerate(labels) if lab == 1]
@@ -146,18 +152,29 @@ class ImageDisplayerGradCam():
         print("Target Class:", target_class_str)
 
         heatmap, _ = self.grad_cam(image, target_class)
-    
-        self._show_image_with_heapmap(heatmap, target_class, true_classes_str_list, target_class_str, image_file_name)
+
+        ### edits 2022-12-15
+        if image_file_name is not None:
+            return self._show_image_with_heapmap(heatmap, target_class, true_classes_str_list, target_class_str, image_file_name, return_heatmap=return_heatmap)
+        else:
+            return self._show_image_with_heapmap(heatmap, target_class, true_classes_str_list, target_class_str, image_file_name, image=image, return_heatmap=return_heatmap)
         
 
-    def _show_image_with_heapmap(self, heatmap, target_class, true_classes_str_list, target_class_str, image_file_name):
+    def _show_image_with_heapmap(self, heatmap, target_class, true_classes_str_list, target_class_str, image_file_name, image=None, return_heatmap = False):
         fig, ax = plt.subplots(1, 1,)
 
         if isinstance(image_file_name, list):
             image_file_name = image_file_name[0]
 
-        image = self.reshape((PIL.Image.open(image_file_name)))
-
+        ### edits 2022-12-15
+        #print("heatmap", heatmap)
+        if image_file_name is not None:
+            image = self.reshape((PIL.Image.open(image_file_name)))
+        elif image is not None:
+            image_255 = (image[0].numpy()*255).astype(np.uint8)
+            print(image[0].size())
+            image = (PIL.Image.fromarray(image_255.transpose(1,2,0), mode="RGB"))
+        
         ax.axis('off')
         ax.imshow(image)
         
@@ -172,17 +189,21 @@ class ImageDisplayerGradCam():
         cb = ax.contourf(x, y, heatmap, 15, cmap=cmap)
         plt.colorbar(cb)
         
-        if os.name == 'nt':
-            file_name = image_file_name.split('.')[0].split('\\')[-1]
-        else:
-            file_name = image_file_name.split('.')[0].split('/')[-1]
+        if image_file_name is not None: 
+            if os.name == 'nt':
+                file_name = image_file_name.split('.')[0].split('\\')[-1]
+            else:
+                file_name = image_file_name.split('.')[0].split('/')[-1]
 
-        if self.pdf:
-            print(f'{self.image_dir}/pdf/{file_name}_heatmap_{target_class}.pdf')
-            if self.save_figs:
-                plt.savefig(f'{self.image_dir}/{file_name}_heatmap_{target_class}.pdf')
-        else:
-            print(f'{self.image_dir}/{file_name}_heatmap_{target_class}.png')
-            if self.save_figs:
-                plt.savefig(f'{self.image_dir}/{file_name}_heatmap_{target_class}.png')
+            if self.pdf:
+                print(f'{self.image_dir}/pdf/{file_name}_heatmap_{target_class}.pdf')
+                if self.save_figs:
+                    plt.savefig(f'{self.image_dir}/{file_name}_heatmap_{target_class}.pdf')
+            else:
+                print(f'{self.image_dir}/{file_name}_heatmap_{target_class}.png')
+                if self.save_figs:
+                    plt.savefig(f'{self.image_dir}/{file_name}_heatmap_{target_class}.png')
         plt.show()
+
+        if return_heatmap:
+            return heatmap
