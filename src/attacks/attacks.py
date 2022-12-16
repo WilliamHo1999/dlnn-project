@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+#import deepfool as deepfool
+from . import deepfool
 
 class FastGradientSign(nn.Module):
     
@@ -183,8 +185,84 @@ class ProjectedGradientDescent(nn.Module):
         else:
             return perturbed_images
 
+# implemented according to the arxiv paper
+class UniversalPerturbation(nn.Module):
+    def __init__(self, model, loss_fn, device = None, epsilon = 0.25, delta=0.05, return_logits = False):
+        super().__init__()
 
+        if not device:
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        else:
+            self.device = device
 
+        self.model = model
+        self.epsilon = epsilon
+        self.delta = delta
+        self.loss_fn = loss_fn
+        self.return_logits = return_logits
 
+    def predict(self, outputs): # get class labels by finding largest value among class predictions
+        return torch.squeeze(outputs.max(-1,keepdim=True)[1])  # assumes output of 1 sample
 
+    def forward_predict(self, inputs): # combine model() and predict()
+        outputs = self.model(inputs)
+        return self.predict(outputs)
 
+    # TODO: ASK WILLIAM
+    def _project_perturbation(self,perturbation,epsilon,l_norm_p_val="inf"):
+        if l_norm_p_val == "2":
+            return torch.renorm(perturbation, 2, 0, epsilon)
+        elif l_norm_p_val == "inf":
+            return torch.clamp(perturbation, -epsilon, epsilon)
+
+    def _find_single_point_perturbation(self, point):
+        pass
+
+    def _compute_fool_rate(self, inputs, targets):
+        outputs = self.model(inputs)
+        predictions = self.predict(outputs)
+        print("predictions: ", predictions.size(), "\n")
+        print("targets", targets.size(), "\n")
+        no_incorrect_predictions = torch.numel(predictions[predictions != targets])
+        fool_rate = float(no_incorrect_predictions)/torch.numel(targets)
+        print("fool_rate", fool_rate)
+        return fool_rate
+
+    # TODO: problems with l2 norm for projection -> hinders convergence
+    def compute_perturbation(self, inputs, targets, max_iter = 99999, max_iter_df = 50):
+        delta = 0.05  # threshold for fool rate
+        epsilon = 1 # size of l-norm ball to project into # determines whether while loop converges!
+
+        # intialize
+        iter = 0
+        v = torch.zeros_like(inputs[0]) # perturbation
+        inputs_perturbed = inputs.clone()
+
+        print("inputs", inputs_perturbed.size())
+        # main loop: as long as error is too low (too little images are incorrectly classified)
+        while self._compute_fool_rate(inputs_perturbed, targets) < 1-delta and iter < max_iter:
+            print(iter)
+            for i in range(inputs.size()[0]): # iterate over datapoints (assumed all given in one data matrix)
+            #for datapoint in inputs.T: # each column is datapoint
+                datapoint = torch.unsqueeze(inputs[i,:,:,:],0)
+                #print("datapoint", datapoint.size())
+                #print("self.forward_predict(datapoint + v)", self.forward_predict(datapoint + v).size())
+                #print("self.forward_predict(datapoint)", self.forward_predict(datapoint).size())
+                if self.forward_predict(datapoint + v) == self.forward_predict(datapoint):
+                    # find perturbation that misclassfies this sample
+                    no_classes = list(self.model.children())[-1].out_features
+                    #print("no_classes", no_classes)
+                    v_sample, _, _, _, _ = deepfool.deepfool(torch.squeeze(datapoint),self.model,
+                        num_classes=no_classes, max_iter=max_iter_df, overshoot=0.02)
+                # update perturbation by 
+                # 1) adding the new perturbation to the previous, 
+                v = v + v_sample
+                ###print("v", v.expand(inputs.size()).size(), v[:10])
+                # 2) projecting back into the l-constraint space
+                v = self._project_perturbation(v, epsilon, "inf")
+                ###print("v", v.expand(inputs.size()).size(), v[:10])
+            # update inputs !!!
+            inputs_perturbed = inputs + v.expand(inputs.size())
+            iter += 1
+        return v
+                

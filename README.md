@@ -11,7 +11,7 @@ Interpretation methods
 
 Datasets
 - MNIST (bw digit image classification, 10 classes)
-- Sub set of ImageNet, and subsets (3-channel general inage classification, 100 classes, 135,000 samples)
+- Sub set of ImageNet (3-channel general inage classification, 100 classes, 135,000 samples)
 
 Models 
 - GoogleNet (for MNIST)
