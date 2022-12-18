@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 
 class ImageDisplayerGradCam():
 
-    def __init__(self, model, grad_cam, classes, reshape = transforms.Resize((256,256)), multi_label = True, image_dir = '', pdf = False, save_figs = False):
+    def __init__(self, model, grad_cam, classes, reshape = transforms.Resize((256,256)), multi_label = True, image_dir = '', pdf = False, save_figs = False, mnist = False, suppress_show = False):
 
 
         self.model = model
@@ -31,16 +31,52 @@ class ImageDisplayerGradCam():
         self.display_labels_or_predictions = True
     
         self.save_figs = save_figs
-
-
+        
+        self.mnist = mnist
         # Reshape image, as 
-        self.reshape = reshape
+        if not mnist:
+            self.reshape = reshape
+        else:
+            self.reshape = transforms.Resize((28,28))
+            
+        self.suppress_show = suppress_show
 
 
     def display_images(self, data, target_class = None, display_labels_or_predictions = True, return_heatmap = False):
 
         return self._display_images(data, target_class, display_labels_or_predictions, return_heatmap)
 
+    def return_heatmap_all(self, data, return_heatmap = True):
+        
+        image = data['image'].to(self.device)
+        if len(image.shape) == 3:
+            image = image.unsqueeze(0)
+        labels = data['label'].squeeze()
+        image_file_name = data['filename']
+        
+        with torch.no_grad():
+            output = self.model(image)
+            output = torch.sigmoid(output)
+            output = output > 0.5
+            output = output.squeeze()
+        
+        classes_to_iterate_prediction = [ind for ind, lab in enumerate(output) if lab == 1]
+        classes_to_iterate_label = [ind for ind, lab in enumerate(labels) if lab == 1]
+        
+        all_heatmaps_pred = np.zeros((len(classes_to_iterate_prediction), 256, 256))
+        all_heatmaps_label = np.zeros((len(classes_to_iterate_label), 256, 256))
+        
+        for target_nr, target in enumerate(classes_to_iterate_prediction):
+            heatmap, _ = self.grad_cam(image, target)
+            all_heatmaps_pred[target_nr,:,:] = heatmap
+        
+        for target_nr, target in enumerate(classes_to_iterate_label):
+            heatmap, _ = self.grad_cam(image, target)
+            all_heatmaps_label[target_nr,:,:] = heatmap
+        
+        
+        return all_heatmaps_pred, len(classes_to_iterate_prediction), torch.nonzero(output.squeeze()).cpu().numpy(), all_heatmaps_label, len(classes_to_iterate_label), torch.nonzero(labels.squeeze()).numpy()
+        
 
     def _display_images(self, data, target_class , display_labels_or_predictions, return_heatmap):
         
@@ -123,12 +159,13 @@ class ImageDisplayerGradCam():
 
         heatmap, _ = self.grad_cam(image, target_class)
 
-        print("_display_target_class", image.size())
-
         true_class_str = [f"{self.classes[label]} ({label})"]
         target_class_str = f"{self.classes[target_class]} ({target_class})"
-
-         ### edits 2022-12-15
+        
+        if self.suppress_show and return_heatmap:
+            return heatmap
+        
+        ### edits 2022-12-15
         if image_file_name is not None:
             return self._show_image_with_heapmap(heatmap, target_class, true_class_str, target_class_str, image_file_name, return_heatmap=return_heatmap)
         else:
@@ -152,6 +189,9 @@ class ImageDisplayerGradCam():
         print("Target Class:", target_class_str)
 
         heatmap, _ = self.grad_cam(image, target_class)
+        
+        if self.suppress_show and return_heatmap:
+            return heatmap
 
         ### edits 2022-12-15
         if image_file_name is not None:
@@ -171,16 +211,25 @@ class ImageDisplayerGradCam():
         if image_file_name is not None:
             image = self.reshape((PIL.Image.open(image_file_name)))
         elif image is not None:
-            image_255 = (image[0].numpy()*255).astype(np.uint8)
+            """
+            image_255 = (image[0].cpu().numpy()*255).astype(np.uint8)
             print(image[0].size())
+            print(image)
             image = (PIL.Image.fromarray(image_255.transpose(1,2,0), mode="RGB"))
-        
+            """
+            tti = transforms.ToPILImage()
+            image = tti(image.squeeze(0))
+            
         ax.axis('off')
-        ax.imshow(image)
+        if self.mnist:
+            print('gray')
+            ax.imshow(image,cmap='gray')
+        else:
+            ax.imshow(image)
         
         true_classes  = ', '.join(true_classes_str_list)
         ax.set_title(f'True class(es): {true_classes}. \nTarget class: {target_class_str}')
-
+        
         cmap = plt.get_cmap('jet')
         cmap._init()
         cmap._lut[:,-1] = np.linspace(0, 0.8, 255+4)
@@ -203,6 +252,7 @@ class ImageDisplayerGradCam():
                 print(f'{self.image_dir}/{file_name}_heatmap_{target_class}.png')
                 if self.save_figs:
                     plt.savefig(f'{self.image_dir}/{file_name}_heatmap_{target_class}.png')
+        
         plt.show()
 
         if return_heatmap:

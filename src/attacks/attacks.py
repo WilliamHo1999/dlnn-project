@@ -327,3 +327,12 @@ class UniversalPerturbation(nn.Module):
             iter += 1
         return v
     """
+    
+    
+class UniversalAttack(nn.Module):
+    def __init__(self, vector = None):
+        super(UniversalAttack, self).__init__()
+        self.vector = vector
+        
+    def forward(self, image, labels, random_start = True, compute_original_prediction = False, compute_new_preds = False):
+        return image + self.vector

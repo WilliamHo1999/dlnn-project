@@ -6,9 +6,11 @@ import torch.nn as nn
 
 class GradCam(nn.Module):
 
-    def __init__(self, model, target_layer, target_class, multi_label = True, no_relu = False):
+    def __init__(self, model, target_layer, target_class, multi_label = True, no_relu = False, print_things = True):
         super().__init__()
 
+        self.print_things = print_things
+        
         self.model = model.eval()
         self.target_layer = target_layer
         self.target_class = target_class
@@ -39,7 +41,8 @@ class GradCam(nn.Module):
 
 
     def forward(self, input, target_class = None):
-        print("Focus class:", target_class)
+        if self.print_things:
+            print("Focus class:", target_class)
 
         output = self.model(input)
 
