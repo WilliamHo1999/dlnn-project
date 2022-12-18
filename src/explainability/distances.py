@@ -78,7 +78,8 @@ def resize_bounding_boxes(bboxes_list, size_list, target_width=256,target_height
     ''' param: bboxes_list : list of (num_samples) lists each with (sample_i_num_bboxes) lists of 4 elements [x_min, y_min, x_max, y_max] '''
     res_bboxes_list = []
     transform = A.Compose([
-        A.Resize(target_height,target_width)
+        A.Resize(target_height,target_width),
+        A.CenterCrop(target_height, target_width)
     ], bbox_params=A.BboxParams(format='pascal_voc', label_fields=["class_labels"]))
     print(["x"]*len(bboxes_list))
     for i_bboxes in range(len(bboxes_list)):
@@ -323,7 +324,8 @@ ious = compute_weighted_iou_mult_class_vec(filenames,dir, heatmaps)
 print("FINAL IOUS:", ious)
 
 image_transforms =  transforms.Compose([
-          transforms.Resize((256,256)),
+        transforms.Resize((256,256)),
+        transforms.CenterCrop((256,256)),
     ])
 img_dir = os.path.join(os.path.dirname( __file__ ),"../../Data/VOC2012/JPEGImages")
 image1 = (PIL.Image.open(os.path.join(img_dir,"2007_000032.jpg")))
@@ -341,7 +343,7 @@ out = get_weighted_iou_mult_class_vec_NEW(res_bounding_maps,res_bounding_maps)
 print("OUT", out.size(), out)
 
 
-#fig, ax = plt.subplots(len(bounding_maps),4)
+fig, ax = plt.subplots(len(bounding_maps),4)
 for j_bounding_map in range(len(bounding_maps)):
     pass
     #ax[j_bounding_map][0].imshow(images[j_bounding_map])
