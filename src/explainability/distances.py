@@ -105,6 +105,23 @@ def _get_bounding_maps(size, bounding_boxes_lists, input_dict=True):
                 bounding_maps[i_img, bbox[1]:bbox[3],bbox[0]:bbox[2]] = 1
     return bounding_maps
 
+# for multiple images
+def _get_bounding_maps_vec_NEW(max_size, bounding_boxes_lists, max_num_bboxes, input_dict=True):
+    '''bounding_boxes_lists: num_samples-sized list of lists of dicts or arrays with the four coordinates for a bounding box
+        max_size: maximum size of all images
+        max_num_boxes: maximum number of bboxes (classes) present in any image
+        output : (num_samples) X (max_boxes) X (max_size[0] X max_size[1])'''
+    bounding_maps = torch.zeros((len(bounding_boxes_lists),max_num_bboxes,*max_size))
+    for i_img in range(len(bounding_boxes_lists)):
+        for j_bbox in range(len(bounding_boxes_lists[i_img])):
+            bbox = bounding_boxes_lists[i_img][j_bbox]
+            print("bbox", bbox)
+            if input_dict:
+                bounding_maps[i_img, j_bbox, bbox["ymin"]:bbox["ymax"],bbox["xmin"]:bbox["xmax"]] = 1
+            else:
+                bounding_maps[i_img, j_bbox, bbox[1]:bbox[3],bbox[0]:bbox[2]] = 1
+    return bounding_maps
+
 
 # for a single image + heatmap
 def get_weighted_iou(heatmap, bounding_boxes):
@@ -139,7 +156,9 @@ def _expand_with_zeros(tensor, dim, target_dim_size):
     target_size = list(tensor.size())
     target_size[dim] = target_dim_size
     out = torch.zeros(target_size)
+    out = out -0.001
     out[0:tens_size[0], 0:tens_size[1], 0:tens_size[2], 0:tens_size[3]] = tensor
+    #print(out)
     return out
 
 # for multiple images each with multiple heatmaps (but only one bounding_map)
@@ -171,6 +190,66 @@ def get_weighted_iou_mult_class_vec(heatmaps, bounding_maps):
     print(weighted_ious_per_heatmap)
     #weighted_ious_per_img = torch.nanmean(weighted_ious_per_heatmap[weighted_ious_per_heatmap[...,-1:]>0], dim=-1)
     weighted_ious_per_img = torch.nanmean(weighted_ious_per_heatmap, dim=-1)
+    print("weighted_ious_per_img", weighted_ious_per_img.size())
+    return weighted_ious_per_img
+
+def get_weighted_iou_mult_class_NEW(heatmaps_list, bounding_maps_list):
+    ''' heatmaps: (num_samples X num_all_classes X w X h)
+        bounding_maps: (num_samples X 4) where 2nd dim is 1d array ymin,ymax,xmin,xmax'''
+    #bounding_maps = torch.unsqueeze(bounding_maps,1)
+    #bounding_maps = bounding_maps.expand_as(heatmaps)
+    wious_per_image = []
+    for i_img in range(len(heatmaps_list)):
+        heatmaps = heatmaps_list[i_img]
+        bounding_maps = bounding_maps_list[i_img]
+        scores_per_heatmap = []
+        for heatmap in heatmaps:
+            scores_heatmap_per_bbox = []
+            for bounding_map in bounding_maps:
+                intersection = torch.clone(heatmap)
+                intersection[bounding_map != 1] = 0
+                union = torch.clone(heatmaps)
+                union[bounding_map == 1] = 1
+                hm_bm_weighted_iou = torch.div(torch.sum(intersection, dim=[-1,-2], keepdim=True), torch.sum(union, dim=[-1,-2], keepdim=True))
+                scores_heatmap_per_bbox.append(hm_bm_weighted_iou)
+            scores_per_heatmap.append(max(scores_heatmap_per_bbox))
+        wiou_image = np.mean(scores_per_heatmap)
+        wious_per_image.append(wiou_image)
+    return wious_per_image
+
+# for multiple images each with multiple heatmaps (but only one bounding_map)
+def get_weighted_iou_mult_class_vec_NEW(heatmaps, bounding_maps):
+    ''' heatmaps: (num_samples X num_all_classes X width X height)
+        bounding_maps: (num_samples X num_max_objects X width X height) where 2nd dim is 1d array ymin,ymax,xmin,xmax'''
+    #bounding_maps = torch.unsqueeze(bounding_maps,1)
+    num_heatmaps = heatmaps.size()[1]
+    num_bounding_maps = bounding_maps.size()[1]
+    #lcm = np.lcm(num_heatmaps,num_bounding_maps)
+    #print("lcm", lcm)
+    #print(lcm/num_bounding_maps)
+    #print(lcm/num_heatmaps)
+    bounding_maps = bounding_maps.repeat(1,num_heatmaps, 1, 1)
+    heatmaps = heatmaps.repeat(1,num_bounding_maps, 1, 1)
+    
+    #bounding_maps = bounding_maps.expand_as(heatmaps)
+    intersections = torch.clone(heatmaps)
+    intersections[bounding_maps != 1] = 0
+    unions = torch.clone(heatmaps)
+    unions[bounding_maps == 1] = 1
+    unions = unions.reshape(heatmaps.size()[0], num_heatmaps, num_bounding_maps, heatmaps.size()[-2], heatmaps.size()[-1])
+    intersections = intersections.reshape(heatmaps.size()[0], num_heatmaps, num_bounding_maps, heatmaps.size()[-2], heatmaps.size()[-1])
+    print(intersections)
+    print(intersections.size())
+    weighted_ious_per_bounding_map = torch.div(torch.sum(intersections, [-1,-2], keepdim=True), torch.sum(unions, [-1,-2], keepdim=True))
+    print("weighted_ious_per_bounding_map", weighted_ious_per_bounding_map.size(), weighted_ious_per_bounding_map)
+    weighted_ious_per_bounding_map = torch.squeeze(weighted_ious_per_bounding_map)
+    weighted_ious_per_bounding_map[torch.isnan(weighted_ious_per_bounding_map)] = -9999 # fix nan issue with torch.max for nans coming by division by 0
+    weighted_ious_per_heatmap = torch.max(weighted_ious_per_bounding_map, dim=-1, keepdim=True)[0] #max wiou across all bboxess for each heatmap
+    weighted_ious_per_heatmap[weighted_ious_per_heatmap<0] = float('nan') # set nan so ignored using nanmean
+    print("weighted_ious_per_heatmap", weighted_ious_per_heatmap.size(), weighted_ious_per_heatmap)
+    weighted_ious_per_heatmap = torch.squeeze(weighted_ious_per_heatmap)
+    weighted_ious_per_img = torch.nanmean(weighted_ious_per_heatmap, dim=-1) # wiou per image as average of heatmaps wiou of that image
+    #weighted_ious_per_img = torch.nanmean(weighted_ious_per_heatmap[weighted_ious_per_heatmap[...,-1:]>0], dim=-1)
     print("weighted_ious_per_img", weighted_ious_per_img.size())
     return weighted_ious_per_img
 
@@ -226,7 +305,7 @@ print("ious", ious.size(), ious)
 filenames = ["2007_000032.xml", "2007_000027.xml"]
 bboxes_list, size_list = get_bounding_boxes_vec(["2007_000032.xml", "2007_000027.xml"], dir=dir, return_dict=False)
 res_bounding_boxes = resize_bounding_boxes(bboxes_list, size_list=size_list)
-res_bounding_maps = _get_bounding_maps((256,256), res_bounding_boxes, input_dict=False)
+res_bounding_maps = _get_bounding_maps_vec_NEW((256,256), res_bounding_boxes, 5, input_dict=False)
 
 heatmaps_org = torch.rand(2,2, 256,256)
 heatmaps = _expand_with_zeros(heatmaps_org, 1,4)
@@ -243,16 +322,35 @@ images = [image1, image2]
 images_transformed = [image_transforms(image1), image_transforms(image2)]
 
 
+# try NEW
+heatmaps_org = torch.rand(2,3, 256,256)
+heatmaps_org = heatmaps_org / heatmaps_org
+heatmaps_org = _expand_with_zeros(heatmaps_org, 1,4)
+print("res_bounding_maps", res_bounding_maps.size())
+out = get_weighted_iou_mult_class_vec_NEW(heatmaps_org,res_bounding_maps)
+print("OUT", out.size(), out)
+
 
 fig, ax = plt.subplots(len(bounding_maps),4)
 for j_bounding_map in range(len(bounding_maps)):
-    ax[j_bounding_map][0].imshow(images[j_bounding_map])
-    ax[j_bounding_map][1].imshow(bounding_maps[j_bounding_map])
-    ax[j_bounding_map][2].imshow(images_transformed[j_bounding_map])
-    ax[j_bounding_map][2].imshow(res_bounding_maps[j_bounding_map], alpha=0.5)
-    ax[j_bounding_map][3].imshow(images_transformed[j_bounding_map])
+    pass
+    #ax[j_bounding_map][0].imshow(images[j_bounding_map])
+    #ax[j_bounding_map][1].imshow(bounding_maps[j_bounding_map])
+    #ax[j_bounding_map][2].imshow(images_transformed[j_bounding_map])
+    #ax[j_bounding_map][2].imshow(res_bounding_maps[j_bounding_map], alpha=0.5)
+    #ax[j_bounding_map][3].imshow(images_transformed[j_bounding_map])
+
+# visualize each bounding box inidividually
+fig, ax = plt.subplots(len(res_bounding_maps),5)
+for j_bounding_map in range(len(res_bounding_maps)):
+    
+    for i_bbox in range(len(res_bounding_maps[j_bounding_map])):
+        print(res_bounding_maps[j_bounding_map].shape)
+        print(res_bounding_maps[j_bounding_map][i_bbox].shape)
+        ax[j_bounding_map][i_bbox].imshow(images_transformed[j_bounding_map])
+        ax[j_bounding_map][i_bbox].imshow(res_bounding_maps[j_bounding_map][i_bbox], alpha=0.5)
 
 plt.show()
 
-# TODO: different image sizes
+# TODO: fix zero expansion
 
