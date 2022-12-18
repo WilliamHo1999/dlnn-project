@@ -165,8 +165,8 @@ def prepare_dataloaders_pascal_voc(root_dir, batch_size = 64):
 
 
     dataloaders = {}
-    dataloaders['train'] = torch.utils.data.DataLoader(image_datasets['train'], batch_size=64, shuffle=True, num_workers=1)
-    dataloaders['val'] = torch.utils.data.DataLoader(image_datasets['val'], batch_size=64, shuffle=False, num_workers=1)
+    dataloaders['train'] = torch.utils.data.DataLoader(image_datasets['train'], batch_size=batch_size, shuffle=True, num_workers=1)
+    dataloaders['val'] = torch.utils.data.DataLoader(image_datasets['val'], batch_size=batch_size, shuffle=False, num_workers=1)
     
     classes = [
             'aeroplane', 'bicycle', 'bird', 'boat',

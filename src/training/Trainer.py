@@ -8,7 +8,7 @@ import time
 
 class Trainer():
 
-    def __init__(self, model, loss_fn, classes, training_params, device = 'cuda', num_epochs = 5, model_name=None, save_model = True, model_dir = 'models', multi_label = False, print_frequency = 100, adversarial_training = False, adversarial_attack = None, custom_scheduler = False, continue_dict = None):
+    def __init__(self, model, loss_fn, classes, training_params, device = 'cuda', num_epochs = 5, model_name=None, save_model = True, model_dir = 'models', multi_label = False, print_frequency = 100, adversarial_training = False, adversarial_attack = None, custom_scheduler = False, continue_dict = None, mnist = False):
         
         self.model = model
         self.device = device
@@ -70,6 +70,7 @@ class Trainer():
         self.adversarial_training = adversarial_training
         self.adversarial_attack = adversarial_attack
         self.custom_scheduler = custom_scheduler
+        self.mnist = mnist
 
 
     def train(self):
@@ -158,7 +159,7 @@ class Trainer():
                     ap = self.epoch_ap['val'][-1, ii]
                     print(
                         f'AP of {str(self.class_names[ii]).ljust(self.longest_class_name+2)}: {ap}'
-                        f'{ap*100:.01f}%'
+                   #     f'{ap*100:.01f}'
                     )
             else:
                 print("Current Epoch:",current_epoch)
@@ -199,7 +200,7 @@ class Trainer():
                 ap = self.epoch_ap['val'][-1, ii]
                 print(
                     f'AP of {str(self.class_names[ii]).ljust(self.longest_class_name+2)}: {ap}'
-                    f'{ap*100:.01f}%'
+#                    f'{ap*100:.01f}'
                 )
         else:
             print("Current Epoch:",0)
@@ -238,8 +239,12 @@ class Trainer():
             
         for index, data in enumerate(self.data_loader[mode]):
             if is_training:
-                inputs = data.get('image').to(self.data_device)
-                labels = data.get('label').to(self.data_device)
+                if self.mnist:
+                    inputs = data[0].to(self.data_device)
+                    labels = data[1].to(self.data_device)
+                else:
+                    inputs = data.get('image').to(self.data_device)
+                    labels = data.get('label').to(self.data_device)
                 
                 if self.adversarial_training:
                     inputs = self.adversarial_attack(inputs, labels, random_start = True, compute_original_prediction = False, compute_new_preds = False)
@@ -249,8 +254,13 @@ class Trainer():
                 loss = self.loss_fn(outputs, labels)
 
             else:
-                inputs = data['image'].to(self.data_device)       
-                labels = data['label'].to(self.data_device)
+                if self.mnist:
+                    inputs = data[0].to(self.data_device)
+                    labels = data[1].to(self.data_device)
+                else:
+                    inputs = data.get('image').to(self.data_device)
+                    labels = data.get('label').to(self.data_device)
+                    
                 if self.adversarial_training:
                     inputs = self.adversarial_attack(inputs, labels, random_start = True, compute_original_prediction = False, compute_new_preds = False)
                 with torch.no_grad():

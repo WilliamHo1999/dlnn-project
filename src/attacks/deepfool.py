@@ -82,3 +82,88 @@ def deepfool(image, net, num_classes, overshoot, max_iter):
         loop_i += 1
 
     return (1+overshoot)*r_tot, loop_i, label, k_i, pert_image
+
+
+def check_if_correct_label(pred, label, total_present):
+    num_correct = 0
+    for p,l in zip(pred.squeeze(), label.squeeze()):
+        if l == 1 and p == l:
+            num_correct += 1
+            
+    return num_correct > 0
+
+def deepfool_multi_label(image, label, net, num_classes, overshoot, max_iter):
+    
+    out = net(image).data.cpu().flatten(start_dim=1)
+    pred = out.sigmoid()
+    pred = pred > 0.5
+    
+    input_shape = image.shape
+    pert_image = image.clone()
+    
+    w = np.zeros(input_shape)
+    r_tot = np.zeros(input_shape)
+    
+    loop_i = 0
+    
+    x = pert_image
+    x.requires_grad = True
+    fs = net(x)
+    k_i = label
+    
+#    batch_size = x.shape[0]
+    
+    corrects = torch.nonzero(label.squeeze())
+    num_correct = label.count_nonzero()
+    while check_if_correct_label(k_i, label, num_correct) and loop_i < max_iter:
+        
+        """
+        keep_samples = [] 
+        for b in range(batch_size):
+            # Simplify to only consider if all classes are correct.
+            if (k_i[b] == label[b]).all():
+                keep_samples.append(b)
+
+        k_i = k_i[keep_samples, :]
+        """
+        
+        pert = torch.inf
+        # Only want gradients for true class
+        masked_output = fs * label
+        masked_output.sum().backward(retain_graph=True)
+        grad_orig = x.grad.data.cpu().numpy().copy()
+        
+        for corr in corrects:
+            for k in range(1, num_classes):
+                if k in corrects:
+                    continue
+                x.grad.zero_()
+                fs[:,k].sum().backward(retain_graph=True)
+                cur_grad = x.grad.data.cpu().numpy().copy()
+
+                w_k = cur_grad - grad_orig
+                f_k = (fs[0, k] 
+                       - fs[0, corr]).data.cpu().numpy()
+
+                pert_k = abs(f_k) / np.linalg.norm(w_k.flatten())
+
+                # determine which w_k to use
+                if pert_k < pert:
+                    pert = pert_k
+                    w = w_k
+        
+        
+        r_i =  (pert+1e-4) * w / np.linalg.norm(w)
+        r_tot = np.float32(r_tot + r_i)
+        pert_image = image + (1+overshoot)*torch.from_numpy(r_tot).cuda()
+        
+        x = pert_image
+        x.requires_grad = True
+        fs = net(x)
+        out = net(image).data.cpu().flatten(start_dim=1)
+        pred = out.sigmoid()
+        k_i = (pred > 0.5).cuda()
+        
+        loop_i += 1
+    
+    return (1+overshoot)*r_tot, loop_i, label, k_i, pert_image

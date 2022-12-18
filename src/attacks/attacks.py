@@ -187,7 +187,7 @@ class ProjectedGradientDescent(nn.Module):
 
 # implemented according to the arxiv paper
 class UniversalPerturbation(nn.Module):
-    def __init__(self, model, loss_fn, device = None, epsilon = 0.25, delta=0.05, return_logits = False):
+    def __init__(self, model, loss_fn, device = None, epsilon = 0.25, delta=0.05, return_logits = False, multi_label = True, batch_size = 1, num_classes = 20):
         super().__init__()
 
         if not device:
@@ -200,10 +200,21 @@ class UniversalPerturbation(nn.Module):
         self.delta = delta
         self.loss_fn = loss_fn
         self.return_logits = return_logits
+        
+        self.multi_label = multi_label
+        self.batch_size = batch_size
+        self.num_classes = num_classes
+    
 
     def predict(self, outputs): # get class labels by finding largest value among class predictions
-        return torch.squeeze(outputs.max(-1,keepdim=True)[1])  # assumes output of 1 sample
-
+        #return torch.squeeze(outputs.max(-1,keepdim=True)[1])  # assumes output of 1 sample
+        if self.multi_label:
+            probs = outputs.sigmoid()
+            preds = probs > 0.5
+            return preds
+        else:
+            return outputs.argmax(dim = 1)
+        
     def forward_predict(self, inputs): # combine model() and predict()
         outputs = self.model(inputs)
         return self.predict(outputs)
@@ -218,16 +229,19 @@ class UniversalPerturbation(nn.Module):
     def _find_single_point_perturbation(self, point):
         pass
 
-    def _compute_fool_rate(self, inputs, targets):
+    def _compute_fool_rate(self, inputs, targets):        
         outputs = self.model(inputs)
         predictions = self.predict(outputs)
-        print("predictions: ", predictions.size(), "\n")
-        print("targets", targets.size(), "\n")
+        print("predictions: ", predictions.size())
+        print("targets", targets.size())
         no_incorrect_predictions = torch.numel(predictions[predictions != targets])
         fool_rate = float(no_incorrect_predictions)/torch.numel(targets)
         print("fool_rate", fool_rate)
         return fool_rate
-
+    
+    
+    # This won't work, cuz self._compute_fool_rate(inputs_perturbed, targets) overflows the GPU memory due to one huge batch.
+    
     # TODO: problems with l2 norm for projection -> hinders convergence
     def compute_perturbation(self, inputs, targets, max_iter = 99999, max_iter_df = 50):
         delta = 0.05  # threshold for fool rate
@@ -245,10 +259,57 @@ class UniversalPerturbation(nn.Module):
             for i in range(inputs.size()[0]): # iterate over datapoints (assumed all given in one data matrix)
             #for datapoint in inputs.T: # each column is datapoint
                 datapoint = torch.unsqueeze(inputs[i,:,:,:],0)
+                targ = targets[i,:]
                 #print("datapoint", datapoint.size())
                 #print("self.forward_predict(datapoint + v)", self.forward_predict(datapoint + v).size())
                 #print("self.forward_predict(datapoint)", self.forward_predict(datapoint).size())
-                if self.forward_predict(datapoint + v) == self.forward_predict(datapoint):
+                if (self.forward_predict(datapoint + v) == self.forward_predict(datapoint)).all():
+                    # find perturbation that misclassfies this sample
+                    #num_classes = list(self.model.children())[-1].out_features
+                    #print("num_classes", num_classes)
+                    if self.multi_label:
+                        v_sample, _, _, _, _ = deepfool.deepfool_multi_label(datapoint, targ, self.model,
+                            num_classes=self.num_classes, max_iter=max_iter_df, overshoot=0.02)
+                    else:
+                        v_sample, _, _, _, _ = deepfool.deepfool(torch.squeeze(datapoint),self.model,
+                            num_classes=self.num_classes, max_iter=max_iter_df, overshoot=0.02)
+                # update perturbation by 
+                # 1) adding the new perturbation to the previous, 
+                v = v + torch.from_numpy(v_sample).cuda()
+                ###print("v", v.expand(inputs.size()).size(), v[:10])
+                # 2) projecting back into the l-constraint space
+                v = self._project_perturbation(v, epsilon, "inf")
+                ###print("v", v.expand(inputs.size()).size(), v[:10])
+            # update inputs !!!
+            inputs_perturbed = inputs + v.expand(inputs.size())
+            iter += 1
+            torch.save(v, 'models/uni_pert_pascal_voc.pt')
+        return v
+    
+    """
+    # TODO: problems with l2 norm for projection -> hinders convergence
+    def compute_perturbation(self, inputs, targets, num_batches, max_iter = 99999, max_iter_df = 50):
+        delta = 0.05  # threshold for fool rate
+        epsilon = 1 # size of l-norm ball to project into # determines whether while loop converges!
+
+        # intialize
+        iter = 0
+        v = torch.zeros_like(inputs[0]) # perturbation
+        inputs_perturbed = inputs.clone()
+
+        #print("inputs", inputs_perturbed.size())
+        # main loop: as long as error is too low (too little images are incorrectly classified)
+        
+
+        while self._compute_fool_rate(inputs_perturbed, targets, num_batches) < 1-delta and iter < max_iter:
+            print(iter)
+            for i in range(inputs.size()[0]): # iterate over datapoints (assumed all given in one data matrix)
+            #for datapoint in inputs.T: # each column is datapoint
+                datapoint = torch.unsqueeze(inputs[i,:,:,:],0)
+                #print("datapoint", datapoint.size())
+                #print("self.forward_predict(datapoint + v)", self.forward_predict(datapoint + v).size())
+                #print("self.forward_predict(datapoint)", self.forward_predict(datapoint).size())
+                if (self.forward_predict(datapoint + v) == self.forward_predict(datapoint)).all():
                     # find perturbation that misclassfies this sample
                     no_classes = list(self.model.children())[-1].out_features
                     #print("no_classes", no_classes)
@@ -265,4 +326,4 @@ class UniversalPerturbation(nn.Module):
             inputs_perturbed = inputs + v.expand(inputs.size())
             iter += 1
         return v
-                
+    """
