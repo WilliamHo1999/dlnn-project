@@ -156,7 +156,7 @@ def _expand_with_zeros(tensor, dim, target_dim_size):
     target_size = list(tensor.size())
     target_size[dim] = target_dim_size
     out = torch.zeros(target_size)
-    out = out -0.001
+    out = out -0.00001
     out[0:tens_size[0], 0:tens_size[1], 0:tens_size[2], 0:tens_size[3]] = tensor
     #print(out)
     return out
@@ -234,23 +234,33 @@ def get_weighted_iou_mult_class_vec_NEW(heatmaps, bounding_maps):
     #bounding_maps = bounding_maps.expand_as(heatmaps)
     intersections = torch.clone(heatmaps)
     intersections[bounding_maps != 1] = 0
+    #print("intersections", intersections.size(), intersections)
     unions = torch.clone(heatmaps)
     unions[bounding_maps == 1] = 1
-    unions = unions.reshape(heatmaps.size()[0], num_heatmaps, num_bounding_maps, heatmaps.size()[-2], heatmaps.size()[-1])
-    intersections = intersections.reshape(heatmaps.size()[0], num_heatmaps, num_bounding_maps, heatmaps.size()[-2], heatmaps.size()[-1])
-    print(intersections)
-    print(intersections.size())
+    #print("unions", unions.size(), unions)
+    ###unions = unions.reshape(heatmaps.size()[0], num_heatmaps, num_bounding_maps, heatmaps.size()[-2], heatmaps.size()[-1])
+    ###intersections = intersections.reshape(heatmaps.size()[0], num_heatmaps, num_bounding_maps, heatmaps.size()[-2], heatmaps.size()[-1])
+    unions = unions.reshape(heatmaps.size()[0], num_bounding_maps, num_heatmaps, heatmaps.size()[-2], heatmaps.size()[-1])
+    intersections = intersections.reshape(heatmaps.size()[0], num_bounding_maps, num_heatmaps, heatmaps.size()[-2], heatmaps.size()[-1])
+    unions = torch.transpose(unions, 1, 2)
+    intersections = torch.transpose(intersections, 1, 2)
+    #print(intersections)
+    #print(intersections.size())
     weighted_ious_per_bounding_map = torch.div(torch.sum(intersections, [-1,-2], keepdim=True), torch.sum(unions, [-1,-2], keepdim=True))
-    print("weighted_ious_per_bounding_map", weighted_ious_per_bounding_map.size(), weighted_ious_per_bounding_map)
+    #print("weighted_ious_per_bounding_map", weighted_ious_per_bounding_map.size(), weighted_ious_per_bounding_map)
     weighted_ious_per_bounding_map = torch.squeeze(weighted_ious_per_bounding_map)
+    #print("weighted_ious_per_bounding_map is nan", weighted_ious_per_bounding_map[torch.isnan(weighted_ious_per_bounding_map)])
     weighted_ious_per_bounding_map[torch.isnan(weighted_ious_per_bounding_map)] = -9999 # fix nan issue with torch.max for nans coming by division by 0
+    #print("weighted_ious_per_bounding_map -9999", weighted_ious_per_bounding_map.size(), weighted_ious_per_bounding_map)
     weighted_ious_per_heatmap = torch.max(weighted_ious_per_bounding_map, dim=-1, keepdim=True)[0] #max wiou across all bboxess for each heatmap
+    #print(weighted_ious_per_heatmap[torch.min(weighted_ious_per_bounding_map, dim=-1, keepdim=True)[0] < 0])
+    weighted_ious_per_heatmap[torch.min(weighted_ious_per_bounding_map, dim=-1, keepdim=True)[0] < 0] = -9999 # so that 0-expanded heatmaps get nan, not recognized in mean
     weighted_ious_per_heatmap[weighted_ious_per_heatmap<0] = float('nan') # set nan so ignored using nanmean
     print("weighted_ious_per_heatmap", weighted_ious_per_heatmap.size(), weighted_ious_per_heatmap)
     weighted_ious_per_heatmap = torch.squeeze(weighted_ious_per_heatmap)
     weighted_ious_per_img = torch.nanmean(weighted_ious_per_heatmap, dim=-1) # wiou per image as average of heatmaps wiou of that image
     #weighted_ious_per_img = torch.nanmean(weighted_ious_per_heatmap[weighted_ious_per_heatmap[...,-1:]>0], dim=-1)
-    print("weighted_ious_per_img", weighted_ious_per_img.size())
+    print("weighted_ious_per_img", weighted_ious_per_img.size(), weighted_ious_per_img)
     return weighted_ious_per_img
 
 # wrapper function
@@ -327,11 +337,11 @@ heatmaps_org = torch.rand(2,3, 256,256)
 heatmaps_org = heatmaps_org / heatmaps_org
 heatmaps_org = _expand_with_zeros(heatmaps_org, 1,4)
 print("res_bounding_maps", res_bounding_maps.size())
-out = get_weighted_iou_mult_class_vec_NEW(heatmaps_org,res_bounding_maps)
+out = get_weighted_iou_mult_class_vec_NEW(res_bounding_maps,res_bounding_maps)
 print("OUT", out.size(), out)
 
 
-fig, ax = plt.subplots(len(bounding_maps),4)
+#fig, ax = plt.subplots(len(bounding_maps),4)
 for j_bounding_map in range(len(bounding_maps)):
     pass
     #ax[j_bounding_map][0].imshow(images[j_bounding_map])
