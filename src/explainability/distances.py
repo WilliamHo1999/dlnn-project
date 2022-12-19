@@ -26,6 +26,24 @@ def hellinger_distance_vec(tensor1, tensor2):
     #print(squared_diff)
     return torch.sqrt(torch.sum(squared_diff, dim=[-1,-2], keepdim=True) / 2) 
 
+def hellinger_distance_vec_NEW(tensor1, tensor2):
+    """ tensors are of type (num_samples X (heatmaps) X w X h) where (w X h) is the distribution """
+    if len(tensor1.size()) ==4:
+        num_hm_1 = tensor1.size()[1]
+        num_hm_2 = tensor2.size()[1]
+        if num_hm_1 > num_hm_2:
+            tensor2 = _expand_with_zeros(tensor2,1,num_hm_1)
+        elif num_hm_1 < num_hm_2:
+            tensor1 = _expand_with_zeros(tensor1,1,num_hm_2)
+    print(tensor1.size(), tensor2.size())
+    if len(tensor1.size()) == 2:
+        tensor1 = torch.unsqueeze(tensor1,0)
+    if len(tensor2.size()) == 2:
+        tensor2 = torch.unsqueeze(tensor2,0)
+    squared_diff = torch.sub(torch.sqrt(tensor1), torch.sqrt(tensor2))**2
+    #print(squared_diff)
+    return torch.sqrt(torch.sum(squared_diff, dim=[-1,-2], keepdim=True) / 2) 
+
 def get_bhattacharyya_distance(dist1,dist2):
     return -np.log(sum([np.sqrt(p_i*q_i) for p_i, q_i in zip(dist1, dist2) ] ))
 
@@ -86,9 +104,9 @@ def resize_bounding_boxes(bboxes_list, size_list, target_width=256,target_height
     for i_bboxes in range(len(bboxes_list)):
         bboxes = bboxes_list[i_bboxes]
         size = list(size_list[i_bboxes])
-        print("size", type(size), size)
+        #print("size", type(size), size)
         dummy_img = np.zeros((size))
-        print(bboxes)
+        #print(bboxes)
         transformed = transform(bboxes=bboxes, image=dummy_img, class_labels=["x"]*len(bboxes))["bboxes"]
         res_bboxes_list.append([[int(coord) for coord in bbox] for bbox in transformed])
     return res_bboxes_list
@@ -114,6 +132,7 @@ def _get_bounding_maps_vec_NEW(max_size, bounding_boxes_lists, max_num_bboxes, i
         max_num_boxes: maximum number of bboxes (classes) present in any image
         output : (num_samples) X (max_boxes) X (max_size[0] X max_size[1])'''
     bounding_maps = torch.zeros((len(bounding_boxes_lists),max_num_bboxes,*max_size))
+    #bounding_maps = torch.sparse_coo_tensor(torch.empty((len(bounding_boxes_lists),max_num_bboxes,*max_size)),[],(len(bounding_boxes_lists),max_num_bboxes,*max_size))
     for i_img in range(len(bounding_boxes_lists)):
         for j_bbox in range(len(bounding_boxes_lists[i_img])):
             if max_num_bboxes > 1:
@@ -256,7 +275,7 @@ def get_weighted_iou_mult_class_vec_NEW(heatmaps, bounding_maps):
     #print(intersections)
     #print(intersections.size())
     weighted_ious_per_bounding_map = torch.div(torch.sum(intersections, [-1,-2], keepdim=True), torch.sum(unions, [-1,-2], keepdim=True))
-    print("weighted_ious_per_bounding_map", weighted_ious_per_bounding_map.size(), weighted_ious_per_bounding_map)
+    print("weighted_ious_per_bounding_map", weighted_ious_per_bounding_map.size())
     weighted_ious_per_bounding_map = torch.squeeze(weighted_ious_per_bounding_map, dim=-1)
     weighted_ious_per_bounding_map = torch.squeeze(weighted_ious_per_bounding_map, dim=-1)
     #print("weighted_ious_per_bounding_map is nan", weighted_ious_per_bounding_map[torch.isnan(weighted_ious_per_bounding_map)])
@@ -266,11 +285,11 @@ def get_weighted_iou_mult_class_vec_NEW(heatmaps, bounding_maps):
     #print(weighted_ious_per_heatmap[torch.min(weighted_ious_per_bounding_map, dim=-1, keepdim=True)[0] < 0])
     weighted_ious_per_heatmap[torch.min(weighted_ious_per_bounding_map, dim=-1, keepdim=True)[0] < 0] = -9999 # so that 0-expanded heatmaps get nan, not recognized in mean
     weighted_ious_per_heatmap[weighted_ious_per_heatmap<0] = float('nan') # set nan so ignored using nanmean
-    print("weighted_ious_per_heatmap", weighted_ious_per_heatmap.size(), weighted_ious_per_heatmap)
+    print("weighted_ious_per_heatmap", weighted_ious_per_heatmap.size())
     weighted_ious_per_heatmap = torch.squeeze(weighted_ious_per_heatmap,2)
     weighted_ious_per_img = torch.nanmean(weighted_ious_per_heatmap, dim=-1) # wiou per image as average of heatmaps wiou of that image
     #weighted_ious_per_img = torch.nanmean(weighted_ious_per_heatmap[weighted_ious_per_heatmap[...,-1:]>0], dim=-1)
-    print("weighted_ious_per_img", weighted_ious_per_img.size(), weighted_ious_per_img)
+    print("weighted_ious_per_img", weighted_ious_per_img.size())
     return weighted_ious_per_img
 
 # wrapper function
@@ -296,30 +315,30 @@ def compute_weighted_iou_mult_class_vec_NEW(bb_filenames, bb_dir, heatmaps, tran
     return weighted_ious
 
 
-dir = os.path.join(os.path.dirname( __file__ ),"../../Data/VOC2012/Annotations")
-boxes1, _ = get_bounding_boxes("2007_000032.xml", dir= dir)
-heatmap1 = np.random.rand(486,500)
-iou, i, u = get_weighted_iou(heatmap1, boxes1)
+####dir = os.path.join(os.path.dirname( __file__ ),"../../Data/VOC2012/Annotations")
+####boxes1, _ = get_bounding_boxes("2007_000032.xml", dir= dir)
+####heatmap1 = np.random.rand(486,500)
+####iou, i, u = get_weighted_iou(heatmap1, boxes1)
 
 #plt.imshow(heatmap)
-print(iou)
+####print(iou)
 #plt.imshow(i)
 #plt.imshow(u)
 
 
-boxes2, _ = get_bounding_boxes("2007_000027.xml", dir=dir)
+####boxes2, _ = get_bounding_boxes("2007_000027.xml", dir=dir)
 
-bounding_maps = _get_bounding_maps((500,500), [boxes1, boxes2])
-print(bounding_maps.size())
+####bounding_maps = _get_bounding_maps((500,500), [boxes1, boxes2])
+####print(bounding_maps.size())
 
 
 # try expanding
-heatmaps_org = torch.rand(2,2, 500,500)
-zeros = torch.zeros(2,4,500,500)
-heatmaps = _expand_with_zeros(heatmaps_org, 1,4)
+####heatmaps_org = torch.rand(2,2, 500,500)
+####zeros = torch.zeros(2,4,500,500)
+####heatmaps = _expand_with_zeros(heatmaps_org, 1,4)
 #heatmaps[0:2,0:2,:500,:500] = heatmaps_org
 ####print("HEATMAPS", heatmaps)
-ious = get_weighted_iou_mult_class_vec(heatmaps,bounding_maps)
+####ious = get_weighted_iou_mult_class_vec(heatmaps,bounding_maps)
 ####print("ious", ious.size(), ious)
 
 # try resizing
@@ -330,33 +349,33 @@ ious = get_weighted_iou_mult_class_vec(heatmaps,bounding_maps)
 #res_bounding_maps = _get_bounding_maps((256,256), res_bounding_boxes, input_dict=False)
 
 # -> try batch resizing
-filenames = ["2007_000032.xml", "2007_000027.xml"]
-bboxes_list, size_list = get_bounding_boxes_vec(["2007_000032.xml", "2007_000027.xml"], dir=dir, return_dict=False)
-res_bounding_boxes = resize_bounding_boxes(bboxes_list, size_list=size_list)
-res_bounding_maps = _get_bounding_maps_vec_NEW((256,256), res_bounding_boxes, 5, input_dict=False)
+####filenames = ["2007_000032.xml", "2007_000027.xml"]
+####bboxes_list, size_list = get_bounding_boxes_vec(["2007_000032.xml", "2007_000027.xml"], dir=dir, return_dict=False)
+####res_bounding_boxes = resize_bounding_boxes(bboxes_list, size_list=size_list)
+####res_bounding_maps = _get_bounding_maps_vec_NEW((256,256), res_bounding_boxes, 5, input_dict=False)
 
-heatmaps_org = torch.rand(2,2, 256,256)
-heatmaps = _expand_with_zeros(heatmaps_org, 1,4)
-ious = compute_weighted_iou_mult_class_vec(filenames,dir, heatmaps)
+####heatmaps_org = torch.rand(2,2, 256,256)
+####heatmaps = _expand_with_zeros(heatmaps_org, 1,4)
+####ious = compute_weighted_iou_mult_class_vec(filenames,dir, heatmaps)
 ####print("FINAL IOUS:", ious)
 
-image_transforms =  transforms.Compose([
-        transforms.Resize((256,256)),
-        transforms.CenterCrop((256,256)),
-    ])
-img_dir = os.path.join(os.path.dirname( __file__ ),"../../Data/VOC2012/JPEGImages")
-image1 = (PIL.Image.open(os.path.join(img_dir,"2007_000032.jpg")))
-image2 = (PIL.Image.open(os.path.join(img_dir,"2007_000027.jpg")))
-images = [image1, image2]
-images_transformed = [image_transforms(image1), image_transforms(image2)]
+####image_transforms =  transforms.Compose([
+####        transforms.Resize((256,256)),
+####        transforms.CenterCrop((256,256)),
+####    ])
+####img_dir = os.path.join(os.path.dirname( __file__ ),"../../Data/VOC2012/JPEGImages")
+####image1 = (PIL.Image.open(os.path.join(img_dir,"2007_000032.jpg")))
+####image2 = (PIL.Image.open(os.path.join(img_dir,"2007_000027.jpg")))
+####images = [image1, image2]
+####images_transformed = [image_transforms(image1), image_transforms(image2)]
 
 
 # try NEW
-heatmaps_org = torch.rand(2,3, 256,256)
-heatmaps_org = heatmaps_org / heatmaps_org
-heatmaps_org = _expand_with_zeros(heatmaps_org, 1,4)
+####heatmaps_org = torch.rand(2,3, 256,256)
+####heatmaps_org = heatmaps_org / heatmaps_org
+####heatmaps_org = _expand_with_zeros(heatmaps_org, 1,4)
 ####print("res_bounding_maps", res_bounding_maps.size())
-out = get_weighted_iou_mult_class_vec_NEW(res_bounding_maps,res_bounding_maps)
+####out = get_weighted_iou_mult_class_vec_NEW(res_bounding_maps,res_bounding_maps)
 ####print("OUT", out.size(), out)
 
 
@@ -378,7 +397,7 @@ out = get_weighted_iou_mult_class_vec_NEW(res_bounding_maps,res_bounding_maps)
         ####ax[j_bounding_map][i_bbox].imshow(images_transformed[j_bounding_map])
         ####ax[j_bounding_map][i_bbox].imshow(res_bounding_maps[j_bounding_map][i_bbox], alpha=0.5)
 
-plt.show()
+####plt.show()
 
 # TODO: fix zero expansion
 
