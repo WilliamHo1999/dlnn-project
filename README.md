@@ -5,6 +5,7 @@
 Attacks:
 - PGD: Projected Gradient Descent PGD
 - FGSM: Fast gradient sign method
+- Universal Pertubation
 
 Interpretation methods
 - GradCam
@@ -12,6 +13,7 @@ Interpretation methods
 Datasets
 - MNIST (bw digit image classification, 10 classes)
 - Sub set of ImageNet (3-channel general inage classification, 100 classes, 135,000 samples)
+- Pascal VOC
 
 Models 
 - LeNet inspired CNN (for MNIST)
