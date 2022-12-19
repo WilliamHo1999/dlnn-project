@@ -14,7 +14,7 @@ Datasets
 - Sub set of ImageNet (3-channel general inage classification, 100 classes, 135,000 samples)
 
 Models 
-- GoogleNet (for MNIST)
+- LeNet inspired CNN (for MNIST)
 - ResNet (for ImageNet)
 
 
