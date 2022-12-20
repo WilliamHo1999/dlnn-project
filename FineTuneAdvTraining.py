@@ -59,7 +59,7 @@ if __name__ == "__main__":
 
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
-    """
+    
     resnet, loaded_state_dict = load_model(model_path = 'models/resnet_100_imagenet_adv_training.pt')
 
     for name, param in resnet.named_parameters():
@@ -97,7 +97,7 @@ if __name__ == "__main__":
 
 
     trainer.train()
-    """
+    
 
     # Fine-tune all layers
     resnet, loaded_state_dict = load_model(model_path = 'models/resnet_100_imagenet_fine_tuned.pt')
