@@ -80,7 +80,7 @@ class FastGradientSign(nn.Module):
 
 class ProjectedGradientDescent(nn.Module):
 
-    def __init__(self, model, loss_fn, iterations = 20, device = None, alpha = 0.20, epsilon = 0.25, return_logits = False, norm = 'inf'):
+    def __init__(self, model, loss_fn, iterations = 20, device = None, alpha = 0.15, epsilon = 0.05, return_logits = False, norm = 'inf'):
         super().__init__()
         """
         args:

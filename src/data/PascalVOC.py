@@ -197,3 +197,63 @@ def prepare_dataloaders_pascal_voc(root_dir, batch_size = 64, smaller_resize = F
             'tvmonitor']
         
     return dataloaders, classes
+
+
+def prepare_dataloaders_pascal_voc_no_normalization(root_dir, batch_size = 64, smaller_resize = False):
+    
+    if smaller_resize:
+        data_transforms = {
+          'train': transforms.Compose([
+              transforms.Resize(256),
+              transforms.RandomCrop(224),
+              transforms.RandomHorizontalFlip(),
+              transforms.ToTensor(),
+          #    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+          ]),
+          'val': transforms.Compose([
+              #transforms.Resize((256,256)),
+              #transforms.CenterCrop(256),
+              transforms.Resize((224,224)),
+              transforms.CenterCrop(224),
+              #transforms.RandomHorizontalFlip(),
+              transforms.ToTensor(),
+            #  transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+          ]),
+        }
+    else:
+        data_transforms = {
+          'train': transforms.Compose([
+              transforms.Resize(256),
+              transforms.RandomCrop(224),
+              transforms.RandomHorizontalFlip(),
+              transforms.ToTensor(),
+              #transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+          ]),
+          'val': transforms.Compose([
+              transforms.Resize((256,256)),
+              transforms.CenterCrop(256),
+              #transforms.RandomHorizontalFlip(),
+              transforms.ToTensor(),
+             # transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+          ]),
+        }
+
+    image_datasets={}
+    image_datasets['train']= dataset_voc(root_dir=root_dir, trvaltest=0, transform = data_transforms['train'])
+
+    image_datasets['val']= dataset_voc(root_dir=root_dir, trvaltest=1, transform = data_transforms['val'])
+
+
+    dataloaders = {}
+    dataloaders['train'] = torch.utils.data.DataLoader(image_datasets['train'], batch_size=batch_size, shuffle=True, num_workers=1)
+    dataloaders['val'] = torch.utils.data.DataLoader(image_datasets['val'], batch_size=batch_size, shuffle=False, num_workers=1)
+    
+    classes = [
+            'aeroplane', 'bicycle', 'bird', 'boat',
+            'bottle', 'bus', 'car', 'cat', 'chair',
+            'cow', 'diningtable', 'dog', 'horse',
+            'motorbike', 'person', 'pottedplant',
+            'sheep', 'sofa', 'train',
+            'tvmonitor']
+        
+    return dataloaders, classes
